@@ -1,0 +1,128 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+    // ===============================================================
+    // Assumed Data Model
+    // ===============================================================
+    //
+    // Collection: products
+    // Document ID: auto-generated
+    // Fields: name, description, price, stock, category, image, createdAt
+    //
+    // Collection: orders
+    // Document ID: auto-generated
+    // Fields: customerName, customerEmail, items, subtotal, discount, shipping, total, status, paymentMethod, createdAt, uid
+    //
+    // Collection: categories
+    // Document ID: auto-generated
+    // Fields: name, createdAt
+    //
+    // Collection: promocodes
+    // Document ID: auto-generated
+    // Fields: code, discountType, discountValue, minOrderAmount, isActive, createdAt
+    //
+    // Collection: banners
+    // Document ID: auto-generated
+    // Fields: title, subtitle, link, imageUrl, isActive, createdAt
+    //
+    // Collection: settings
+    // Document ID: app
+    // Fields: shippingCharge, minOrderForFreeShipping, lowStockThreshold
+    //
+    // Collection: feedback
+    // Document ID: auto-generated
+    // Fields: name, email, message, createdAt
+    //
+    // Collection: profiles
+    // Document ID: user UID
+    // Fields: name, email, mobile, address, createdAt
+    //
+    // ===============================================================
+
+    // ===============================================================
+    // Helper Functions
+    // ===============================================================
+    
+    function isAuthenticated() {
+      return request.auth != null;
+    }
+
+    function isOwner(userId) {
+      return isAuthenticated() && request.auth.uid == userId;
+    }
+
+    function isAdmin() {
+      return isAuthenticated() && 
+        (request.auth.token.email == "bharat.bbn@gmail.com" && request.auth.token.email_verified == true);
+    }
+
+    function hasOnlyAllowedFields(fields) {
+      return request.resource.data.keys().hasOnly(fields);
+    }
+
+    function isValidEmail(email) {
+      return email is string && email.matches("^[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\\.[a-zA-Z]{2,}$");
+    }
+
+    // ===============================================================
+    // Collection Rules
+    // ===============================================================
+
+    // Products: Publicly readable, Admin writable, Users can update stock
+    match /products/{productId} {
+      allow read: if true;
+      allow write: if isAdmin();
+      allow update: if isAuthenticated() && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['stock']);
+    }
+
+    // Categories: Publicly readable, Admin writable
+    match /categories/{categoryId} {
+      allow read: if true;
+      allow write: if isAdmin();
+    }
+
+    // Banners: Publicly readable, Admin writable
+    match /banners/{bannerId} {
+      allow read: if true;
+      allow write: if isAdmin();
+    }
+
+    // Settings: Publicly readable, Admin writable
+    match /settings/{settingId} {
+      allow read: if true;
+      allow write: if isAdmin();
+    }
+
+    // PromoCodes: Admin readable/writable, Users can read if they know the code (handled by app logic)
+    // For simplicity, allow read if authenticated for users to validate codes
+    match /promocodes/{promoId} {
+      allow read: if isAuthenticated();
+      allow write: if isAdmin();
+    }
+
+    // Orders: Admin can read/write all. Users can create and read their own.
+    match /orders/{orderId} {
+      allow read: if isAdmin() || (isAuthenticated() && resource.data.uid == request.auth.uid);
+      allow create: if isAuthenticated() && request.resource.data.uid == request.auth.uid;
+      allow update, delete: if isAdmin();
+    }
+
+    // Profiles: Users can read/write their own. Admin can read all.
+    match /profiles/{userId} {
+      allow read: if isAdmin() || isOwner(userId);
+      allow write: if isOwner(userId) || isAdmin();
+    }
+
+    // Feedback: Anyone can create. Admin can read/delete.
+    match /feedback/{feedbackId} {
+      allow create: if true;
+      allow read, delete: if isAdmin();
+      allow update: if false;
+    }
+
+    // Connection Tests (used in Admin panel)
+    match /connection_tests/{testId} {
+      allow read, write: if isAdmin();
+    }
+  }
+}
